@@ -10,6 +10,7 @@ import aiohttp
 from aiohttp_socks import ProxyConnector
 
 from vpnprobe.config import Settings
+from vpnprobe.processes import stop_process_group
 from vpnprobe.xray import TunnelError, start_tunnel
 
 
@@ -63,8 +64,7 @@ async def _run_hysteria_ping(
         return 1
     finally:
         if tunnel is not None:
-            cleanup = asyncio.create_task(tunnel.stop())
-            await asyncio.shield(cleanup)
+            await tunnel.stop()
 
 
 async def run_vpn_ping(
@@ -94,5 +94,8 @@ async def run_vpn_ping(
     if timeout_seconds is not None:
         timeout_ms = max(1, round(timeout_seconds * 1000))
         arguments.extend(("--timeout", str(timeout_ms), "--mdelay", str(timeout_ms)))
-    process = await asyncio.create_subprocess_exec(*arguments)
-    return await process.wait()
+    process = await asyncio.create_subprocess_exec(*arguments, start_new_session=True)
+    try:
+        return await process.wait()
+    finally:
+        await stop_process_group(process, settings.process_stop_timeout)

@@ -7,6 +7,7 @@ import sys
 import time
 
 from vpnprobe.config import ProbeConfig
+from vpnprobe.processes import stop_process_group
 
 
 async def run_proxy_ping(
@@ -29,20 +30,21 @@ async def run_proxy_ping(
         url,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        start_new_session=True,
     )
     try:
         maximum_runtime = timeout_seconds * 2
         async with asyncio.timeout(maximum_runtime + settings.process_stop_timeout):
             stdout, stderr = await process.communicate()
     except TimeoutError:
-        process.kill()
-        await process.communicate()
         elapsed_ms = (time.perf_counter() - started) * 1000
         print(
             f"ERR {elapsed_ms:.1f} ms TDLib ping helper did not stop",
             file=sys.stderr,
         )
         return 1
+    finally:
+        await stop_process_group(process, settings.process_stop_timeout)
 
     if stdout:
         print(stdout.decode(errors="replace").rstrip())

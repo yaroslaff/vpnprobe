@@ -54,7 +54,11 @@ async def test_isolated_ping_process_results(
     async def create(*_args: object, **_kwargs: object) -> Process:
         return processes.pop(0)
 
+    async def stop(_process: object, _timeout: float) -> None:
+        return None
+
     monkeypatch.setattr("vpnprobe.proxy_ping_cli.asyncio.create_subprocess_exec", create)
+    monkeypatch.setattr("vpnprobe.proxy_ping_cli.stop_process_group", stop)
     assert await run_proxy_ping(PROXY_URL, settings, 1, "ALL") == 0
     assert capsys.readouterr().out == "OK 42.0 ms\n"
     assert await run_proxy_ping(PROXY_URL, settings, 1, "2") == 1
@@ -72,11 +76,48 @@ async def test_isolated_ping_process_timeout(
     async def create(*_args: object, **_kwargs: object) -> Process:
         return process
 
+    async def stop(stopped_process: Process, _timeout: float) -> None:
+        stopped_process.kill()
+
     monkeypatch.setattr("vpnprobe.proxy_ping_cli.asyncio.create_subprocess_exec", create)
+    monkeypatch.setattr("vpnprobe.proxy_ping_cli.stop_process_group", stop)
     quick = replace(settings, process_stop_timeout=0.001)
     assert await run_proxy_ping(PROXY_URL, quick, 0.001, "ALL") == 1
     assert process.killed
     assert "helper did not stop" in capsys.readouterr().err
+
+
+@pytest.mark.asyncio
+async def test_isolated_ping_stops_process_when_cancelled(
+    settings, monkeypatch: pytest.MonkeyPatch
+) -> None:  # type: ignore[no-untyped-def]
+    process = Process(0, hangs=True)
+    communicating = asyncio.Event()
+    stopped = False
+
+    async def communicate() -> tuple[bytes, bytes]:
+        communicating.set()
+        await asyncio.Event().wait()
+        return b"", b""
+
+    process.communicate = communicate  # type: ignore[method-assign]
+
+    async def create(*_args: object, **options: object) -> Process:
+        assert options["start_new_session"] is True
+        return process
+
+    async def stop(_process: object, _timeout: float) -> None:
+        nonlocal stopped
+        stopped = True
+
+    monkeypatch.setattr("vpnprobe.proxy_ping_cli.asyncio.create_subprocess_exec", create)
+    monkeypatch.setattr("vpnprobe.proxy_ping_cli.stop_process_group", stop)
+    task = asyncio.create_task(run_proxy_ping(PROXY_URL, settings, 10, "ALL"))
+    await communicating.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert stopped
 
 
 def test_ping_worker_result_and_main(

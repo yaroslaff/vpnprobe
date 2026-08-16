@@ -22,16 +22,23 @@ class Process:
 @pytest.mark.asyncio
 async def test_vpn_ping_inherits_xray_output(settings, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
     calls: list[tuple[str, ...]] = []
+    create_options: list[dict[str, object]] = []
 
-    async def create(*arguments: str) -> Process:
+    async def create(*arguments: str, **options: object) -> Process:
         calls.append(arguments)
+        create_options.append(options)
         return Process(7)
+
+    async def stop(_process: object, _timeout: float) -> None:
+        return None
 
     monkeypatch.setattr(
         "vpnprobe.vpn_ping_cli.asyncio.create_subprocess_exec",
         create,
     )
+    monkeypatch.setattr("vpnprobe.vpn_ping_cli.stop_process_group", stop)
     assert await run_vpn_ping(VLESS_URL, settings, None, speedtest=False) == 7
+    assert create_options[-1] == {"start_new_session": True}
     assert calls == [
         (
             settings.xray_knife_path,
@@ -46,6 +53,38 @@ async def test_vpn_ping_inherits_xray_output(settings, monkeypatch: pytest.Monke
     assert await run_vpn_ping(VLESS_URL, settings, 2.5, speedtest=True) == 7
     assert "--speedtest" in calls[-1]
     assert calls[-1][-4:] == ("--timeout", "2500", "--mdelay", "2500")
+
+
+@pytest.mark.asyncio
+async def test_vpn_ping_stops_process_when_cancelled(
+    settings, monkeypatch: pytest.MonkeyPatch
+) -> None:  # type: ignore[no-untyped-def]
+    waiting = __import__("asyncio").Event()
+    stopped = False
+
+    class HangingProcess(Process):
+        async def wait(self) -> int:
+            waiting.set()
+            await __import__("asyncio").Event().wait()
+            return 0
+
+    async def create(*_arguments: str, **_options: object) -> HangingProcess:
+        return HangingProcess(0)
+
+    async def stop(_process: object, _timeout: float) -> None:
+        nonlocal stopped
+        stopped = True
+
+    monkeypatch.setattr("vpnprobe.vpn_ping_cli.asyncio.create_subprocess_exec", create)
+    monkeypatch.setattr("vpnprobe.vpn_ping_cli.stop_process_group", stop)
+    task = __import__("asyncio").create_task(
+        run_vpn_ping(VLESS_URL, settings, None, speedtest=False)
+    )
+    await waiting.wait()
+    task.cancel()
+    with pytest.raises(__import__("asyncio").CancelledError):
+        await task
+    assert stopped
 
 
 class Response:

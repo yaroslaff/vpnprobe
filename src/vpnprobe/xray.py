@@ -8,10 +8,9 @@ import ipaddress
 import json
 import os
 import random
-import signal
 import socket
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import parse_qsl, quote, unquote, urlsplit
 
@@ -20,6 +19,7 @@ import psutil
 from vpnprobe.config import ProbeConfig
 from vpnprobe.errors import ProbeError
 from vpnprobe.identity import server_endpoint
+from vpnprobe.processes import stop_process_group
 
 
 class TunnelError(ProbeError):
@@ -47,6 +47,7 @@ class Tunnel:
     username: str = ""
     password: str = ""
     config_path: Path | None = None
+    _stop_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
 
     @property
     def proxy_url(self) -> str:
@@ -71,18 +72,21 @@ class Tunnel:
             return await asyncio.to_thread(_process_tree_remote_ip, self.process.pid, server_port)
 
     async def stop(self) -> None:
-        try:
-            if self.process.returncode is not None:
-                await self.process.wait()
-                return
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(self.process.pid, signal.SIGTERM)
+        if self._stop_task is None:
+            self._stop_task = asyncio.create_task(self._stop())
+        cancellation: asyncio.CancelledError | None = None
+        while not self._stop_task.done():
             try:
-                await asyncio.wait_for(self.process.wait(), timeout=self.stop_timeout)
-            except TimeoutError:
-                with contextlib.suppress(ProcessLookupError):
-                    os.killpg(self.process.pid, signal.SIGKILL)
-                await self.process.wait()
+                await asyncio.shield(self._stop_task)
+            except asyncio.CancelledError as exc:
+                cancellation = exc
+        self._stop_task.result()
+        if cancellation is not None:
+            raise cancellation
+
+    async def _stop(self) -> None:
+        try:
+            await stop_process_group(self.process, self.stop_timeout)
         finally:
             if self.config_path is not None:
                 with contextlib.suppress(OSError):
@@ -232,7 +236,7 @@ async def _start_hysteria_tunnel(config_url: str, settings: ProbeConfig, port: i
     tunnel = Tunnel(process, port, settings.process_stop_timeout, config_path=config_path)
     try:
         await _wait_for_socks(tunnel, settings.connectivity_check_timeout)
-    except (TimeoutError, TunnelError):
+    except BaseException:
         await tunnel.stop()
         raise
     return tunnel
@@ -288,7 +292,7 @@ async def start_tunnel(config_url: str, settings: ProbeConfig) -> Tunnel:
     except (BrokenPipeError, ConnectionResetError) as exc:
         await tunnel.stop()
         raise TunnelError("xray-knife closed stdin before reading the configuration") from exc
-    except (TimeoutError, TunnelError):
+    except BaseException:
         await tunnel.stop()
         raise
     return tunnel

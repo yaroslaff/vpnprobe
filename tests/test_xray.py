@@ -99,6 +99,7 @@ async def test_start_and_stop_tunnel(settings: Settings, monkeypatch: pytest.Mon
     assert "--core" not in calls[-1]
     stop_calls: list[tuple[int, signal.Signals]] = []
     monkeypatch.setattr(os, "killpg", lambda pid, sig: stop_calls.append((pid, sig)))
+    monkeypatch.setattr("vpnprobe.processes._process_group_exists", lambda _pid: False)
     await tunnel.stop()
     assert stop_calls == [(12345, signal.SIGTERM)]
     await tunnel.stop()
@@ -295,6 +296,7 @@ async def test_start_errors_and_forced_stop(
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", create_broken)
     monkeypatch.setattr(os, "killpg", lambda *_args: None)
+    monkeypatch.setattr("vpnprobe.processes._process_group_exists", lambda _pid: False)
     with pytest.raises(TunnelError, match="closed stdin"):
         await start_tunnel("vless://id@example.com:443", settings)
 
@@ -313,5 +315,40 @@ async def test_start_errors_and_forced_stop(
     slow = SlowProcess()
     signals: list[signal.Signals] = []
     monkeypatch.setattr(os, "killpg", lambda _pid, sig: signals.append(sig))
+    monkeypatch.setattr("vpnprobe.processes._process_group_exists", lambda _pid: True)
     await Tunnel(slow, 12345, 0.001).stop()  # type: ignore[arg-type]
     assert signals == [signal.SIGTERM, signal.SIGKILL]
+
+
+@pytest.mark.asyncio
+async def test_cancelled_tunnel_start_stops_spawned_process(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    process = FakeProcess()
+    reading = asyncio.Event()
+    stopped = False
+
+    async def readline() -> bytes:
+        reading.set()
+        await asyncio.Event().wait()
+        return b""
+
+    process.stdout.readline = readline  # type: ignore[method-assign]
+
+    async def create(*_args: object, **_kwargs: object) -> FakeProcess:
+        return process
+
+    async def stop(_process: object, _timeout: float) -> None:
+        nonlocal stopped
+        stopped = True
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create)
+    monkeypatch.setattr("vpnprobe.xray._random_free_port", lambda: 23456)
+    monkeypatch.setattr("vpnprobe.processes.stop_process_group", stop)
+    monkeypatch.setattr("vpnprobe.xray.stop_process_group", stop)
+    task = asyncio.create_task(start_tunnel("vless://id@example.com:443", settings))
+    await reading.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert stopped
