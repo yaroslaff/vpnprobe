@@ -76,3 +76,12 @@ def test_cli_concise_error(
         cli.main()
     assert result.value.code == 2
     assert capsys.readouterr().err == "ERROR_COMMAND bad input\n"
+
+
+def test_cli_dependency_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "check_dependencies", lambda **_options: ())
+    monkeypatch.setattr(cli, "print_dependency_check", lambda _results: 7)
+    monkeypatch.setattr(sys, "argv", ["vpnprobe", "check"])
+    with pytest.raises(SystemExit) as result:
+        cli.main()
+    assert result.value.code == 7

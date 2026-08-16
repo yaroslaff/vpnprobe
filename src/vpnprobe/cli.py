@@ -7,6 +7,7 @@ import asyncio
 import sys
 
 from vpnprobe import __version__
+from vpnprobe.diagnostics import check_dependencies, print_dependency_check
 from vpnprobe.errors import ProbeError
 from vpnprobe.ping import PingOptions, ping
 
@@ -23,12 +24,25 @@ def build_parser() -> argparse.ArgumentParser:
     ping_parser.add_argument("--xray-knife", default="xray-knife", metavar="PATH")
     ping_parser.add_argument("--hysteria", default="hysteria", metavar="PATH")
     ping_parser.add_argument("--tdjson-library", default="", metavar="PATH")
+    check_parser = commands.add_parser("check", help="check external runtime dependencies")
+    check_parser.add_argument("--xray-knife", default="xray-knife", metavar="PATH")
+    check_parser.add_argument("--hysteria", default="hysteria", metavar="PATH")
+    check_parser.add_argument("--tdjson-library", default="", metavar="PATH")
     return parser
 
 
 def main() -> None:
     args = build_parser().parse_args()
     try:
+        if args.command == "check":
+            code = print_dependency_check(
+                check_dependencies(
+                    xray_knife_path=args.xray_knife,
+                    hysteria_path=args.hysteria,
+                    tdjson_library=args.tdjson_library,
+                )
+            )
+            raise SystemExit(code)
         code = asyncio.run(
             ping(
                 args.url,
