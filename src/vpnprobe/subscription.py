@@ -146,8 +146,13 @@ def parse_subscription(payload: bytes) -> list[str]:
         return _parse_lines(text)
     except SubscriptionError as plain_error:
         compact = "".join(text.split())
+        padding = "=" * (-len(compact) % 4)
         try:
-            decoded = base64.b64decode(compact, validate=True).decode("utf-8-sig")
+            decoded = base64.b64decode(
+                compact + padding,
+                altchars=b"-_",
+                validate=True,
+            ).decode("utf-8-sig")
             return _parse_lines(decoded)
         except (binascii.Error, UnicodeDecodeError, SubscriptionError) as exc:
             raise plain_error from exc

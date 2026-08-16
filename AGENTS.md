@@ -4,9 +4,11 @@
 
 - Build `vpnprobe`, an unprivileged Python 3.13 library for checking SS, VLESS,
   Hysteria2, MTProto proxy, and VPN subscription URLs, plus a `ping` CLI for
-  direct VPN and MTProto proxy URLs.
+  direct VPN and MTProto proxy URLs and a `subscription`/`sub` CLI for
+  downloading, decoding, and printing subscription entries without probing them.
 - Keep `vpnprobe` independent of vpnshare persistence and product logic. Do not add SQLite, SQLAlchemy, Alembic, Telegram Bot API, user, distribution, or scheduling dependencies.
 - Expose one typed asyncio-native Python API and make the CLI a thin adapter over that API.
+- Keep the `ping` contract intentionally minimal: its required result is only whether the probe succeeded, represented by a conventional integer status code. Structured latency, speed, DC, or diagnostic results are not required. The library may print or inherit useful human-readable output from probe tools such as xray-knife so an interactive user can see optional details.
 - Do not read vpnshare configuration or databases. Accept inputs and options explicitly and write only disposable runtime data to temporary directories.
 
 ## Platform and quality
@@ -17,6 +19,10 @@
 - Ordinary tests must not require external network access, real VPN keys, TDLib, xray-knife, or sing-box.
 - Keep code, identifiers, CLI output, logs, diagnostics, and developer documentation in English.
 - Do not add server-side CI; checks run locally.
+
+## Development workflow
+
+- After completing and verifying any file changes, ask the user whether to create a Git commit unless the user already explicitly requested a commit.
 
 ## Security and runtime
 

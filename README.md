@@ -24,7 +24,15 @@ Upgrade from the same Git repository:
 ```bash
 vpnprobe ping 'vless://...'
 vpnprobe ping 'tg://proxy?...' --dc ALL
+vpnprobe subscription 'https://example.com/subscription'
+# Short alias:
+vpnprobe sub 'https://example.com/subscription'
 ```
+
+`vpnprobe subscription` downloads a subscription, decodes whole-list Base64
+when necessary, and prints one SS, VLESS, or Hysteria2 URL per line. It does
+not test the returned VPN URLs. The equivalent library function is the async
+`fetch_subscription(url, settings)`, which returns the URLs without printing.
 
 The process runs without root privileges. Runtime checks need outbound network
 access and, depending on the protocol, executable `xray-knife`/`sing-box`, the

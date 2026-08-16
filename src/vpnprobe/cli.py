@@ -7,9 +7,11 @@ import asyncio
 import sys
 
 from vpnprobe import __version__
+from vpnprobe.config import Settings
 from vpnprobe.diagnostics import check_dependencies, print_dependency_check
 from vpnprobe.errors import ProbeError
 from vpnprobe.ping import PingOptions, ping
+from vpnprobe.subscription import fetch_subscription
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -24,6 +26,12 @@ def build_parser() -> argparse.ArgumentParser:
     ping_parser.add_argument("--xray-knife", default="xray-knife", metavar="PATH")
     ping_parser.add_argument("--hysteria", default="hysteria", metavar="PATH")
     ping_parser.add_argument("--tdjson-library", default="", metavar="PATH")
+    subscription_parser = commands.add_parser(
+        "subscription",
+        aliases=["sub"],
+        help="download and print VPN URLs from a subscription",
+    )
+    subscription_parser.add_argument("url")
     check_parser = commands.add_parser("check", help="check external runtime dependencies")
     check_parser.add_argument("--xray-knife", default="xray-knife", metavar="PATH")
     check_parser.add_argument("--hysteria", default="hysteria", metavar="PATH")
@@ -43,6 +51,10 @@ def main() -> None:
                 )
             )
             raise SystemExit(code)
+        if args.command in {"subscription", "sub"}:
+            configs = asyncio.run(fetch_subscription(args.url, Settings()))
+            print("\n".join(configs))
+            raise SystemExit(0)
         code = asyncio.run(
             ping(
                 args.url,

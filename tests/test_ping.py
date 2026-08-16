@@ -85,3 +85,25 @@ def test_cli_dependency_check(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(SystemExit) as result:
         cli.main()
     assert result.value.code == 7
+
+
+@pytest.mark.parametrize("command", ("subscription", "sub"))
+def test_cli_prints_subscription_entries(
+    command: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def fetch(_url: str, _settings: object) -> list[str]:
+        return [
+            "vless://id@example.com:443",
+            "ss://encoded@example.net:8443",
+        ]
+
+    monkeypatch.setattr(cli, "fetch_subscription", fetch)
+    monkeypatch.setattr(sys, "argv", ["vpnprobe", command, "https://example.com/sub"])
+    with pytest.raises(SystemExit) as result:
+        cli.main()
+    assert result.value.code == 0
+    assert capsys.readouterr().out == (
+        "vless://id@example.com:443\nss://encoded@example.net:8443\n"
+    )

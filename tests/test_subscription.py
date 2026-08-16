@@ -31,6 +31,7 @@ def test_parse_plain_and_base64_subscription() -> None:
     plain = "\n".join(lines).encode()
     assert parse_subscription(plain) == lines
     assert parse_subscription(base64.b64encode(plain)) == lines
+    assert parse_subscription(base64.urlsafe_b64encode(plain).rstrip(b"=")) == lines
     with pytest.raises(SubscriptionError, match="empty"):
         parse_subscription(b"")
     with pytest.raises(SubscriptionError, match="unsupported"):
