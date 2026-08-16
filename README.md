@@ -12,22 +12,18 @@ Bot API dependency. Library callers provide all settings explicitly.
 ## Installation
 
 ```bash
-python3.13 -m venv .venv
-.venv/bin/pip install 'git+https://github.com/yaroslaff/vpnprobe.git'
-.venv/bin/vpnprobe check
+pipx install git+https://github.com/yaroslaff/vpnprobe.git
+vpnprobe check
 ```
 
 Upgrade from the same Git repository:
 
-```bash
-.venv/bin/pip install --upgrade 'git+https://github.com/yaroslaff/vpnprobe.git'
-```
 
 ## Usage
 
 ```bash
-.venv/bin/vpnprobe ping 'vless://...'
-.venv/bin/vpnprobe ping 'tg://proxy?...' --dc ALL
+vpnprobe ping 'vless://...'
+vpnprobe ping 'tg://proxy?...' --dc ALL
 ```
 
 The process runs without root privileges. Runtime checks need outbound network
