@@ -44,3 +44,13 @@ SOCKS5 listener. Temporary tunnel and TDLib state is removed after each check.
 network. It reports the installed executable or library and its version when
 available. For a missing dependency, it prints a short Debian 13 installation
 instruction for the latest xray-knife, sing-box, Hysteria, or packaged TDLib.
+
+## Exit codes
+
+`vpnprobe ping` returns `0` only when a request really succeeded through the
+tunnel: the probe opens a disposable loopback SOCKS5 tunnel for the URL
+(`xray-knife` for SS/VLESS/VMess/Trojan, the native client for Hysteria2) and
+requires HTTP 204 from the connectivity endpoint. A failed check returns `1`,
+and a bad URL or unusable dependency returns `2`. The exit codes of
+`xray-knife` and `hysteria` are not trusted, because both exit `0` even when
+their own checks fail.
