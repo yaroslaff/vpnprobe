@@ -11,6 +11,7 @@ import aiohttp
 from aiohttp_socks import ProxyConnectionError, ProxyConnector, ProxyError, ProxyTimeoutError
 
 from vpnprobe.config import Settings
+from vpnprobe.processes import stop_process_group
 from vpnprobe.xray import Tunnel, TunnelError, start_tunnel
 
 # xray-knife and the Hysteria client report their own verdicts on stdout but always
@@ -26,8 +27,39 @@ PROBE_ERRORS = (
 )
 
 
+# Decoding one link needs no network, so a short bound is enough.
+DETAILS_TIMEOUT = 5.0
+
+
 def _protocol_label(url: str) -> str:
     return urlsplit(url.strip()).scheme.lower() or "vpn"
+
+
+async def print_details(url: str, settings: Settings) -> None:
+    """Show the decoded configuration, as ``xray-knife http`` used to print it.
+
+    The probe verdict never depends on these details, so an unusable or missing
+    xray-knife stays silent here and is reported by the tunnel instead.
+    """
+    arguments = [settings.xray_knife_path, "parse", "--config", url]
+    try:
+        async with asyncio.timeout(DETAILS_TIMEOUT):
+            process = await asyncio.create_subprocess_exec(
+                *arguments,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            try:
+                stdout, _stderr = await process.communicate()
+            finally:
+                await stop_process_group(process, settings.process_stop_timeout)
+    except (TimeoutError, OSError):
+        return
+    if process.returncode == 0 and (details := stdout.decode(errors="replace").strip()):
+        # Flush so the details stay ahead of anything the probe writes to stderr.
+        print(details)
+        print(flush=True)
 
 
 async def _wait_for_connectivity(
@@ -87,6 +119,7 @@ async def run_vpn_ping(
 ) -> int:
     """Probe one direct VPN URL and return 0 only when traffic really flows."""
     label = _protocol_label(url)
+    await print_details(url, settings)
     timeout = timeout_seconds or settings.connectivity_check_timeout
     effective = replace(
         settings,
@@ -109,7 +142,7 @@ async def run_vpn_ping(
             trust_env=False,
         ) as session:
             status = await _wait_for_connectivity(session, effective, tunnel, deadline)
-            print(f"OK {label} connectivity HTTP {status}")
+            print(f"OK {label} connectivity HTTP {status}", flush=True)
             if speedtest:
                 async with asyncio.timeout(timeout):
                     print(f"Download: {await _measure_download(session, effective):.1f} Mbps")

@@ -47,6 +47,11 @@ instruction for the latest xray-knife, sing-box, Hysteria, or packaged TDLib.
 
 ## Exit codes
 
+`vpnprobe ping` first prints the decoded configuration, exactly as
+`xray-knife parse` reports it, and then the probe verdict. Missing or
+unusable `xray-knife` only removes those details; it never changes the
+status.
+
 `vpnprobe ping` returns `0` only when a request really succeeded through the
 tunnel: the probe opens a disposable loopback SOCKS5 tunnel for the URL
 (`xray-knife` for SS/VLESS/VMess/Trojan, the native client for Hysteria2) and

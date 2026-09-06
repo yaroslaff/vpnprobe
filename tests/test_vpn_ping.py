@@ -72,6 +72,16 @@ class FakeTunnel:
         self.stopped = True
 
 
+@pytest.fixture(autouse=True)
+def _offline_details(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the decoded-configuration helper from running the real xray-knife."""
+
+    async def unavailable(*_arguments: str, **_options: object) -> object:
+        raise OSError("xray-knife is not available in tests")
+
+    monkeypatch.setattr("vpnprobe.vpn_ping_cli.asyncio.create_subprocess_exec", unavailable)
+
+
 @pytest.fixture
 def tunnel(monkeypatch: pytest.MonkeyPatch) -> FakeTunnel:
     started = FakeTunnel()
@@ -238,3 +248,65 @@ async def test_vpn_ping_reports_tunnel_that_exited_early(
     assert await run_vpn_ping(VLESS_URL, settings, 1, speedtest=False) == 1
     assert "Tunnel exited early: xray-knife: invalid configuration" in capsys.readouterr().err
     assert dead.stopped
+
+
+class ParseProcess:
+    def __init__(self, returncode: int, stdout: bytes) -> None:
+        self.returncode = returncode
+        self.stdout = stdout
+
+    async def communicate(self) -> tuple[bytes, bytes]:
+        return self.stdout, b""
+
+
+@pytest.fixture
+def parse_calls(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, ...]]:
+    calls: list[tuple[str, ...]] = []
+
+    async def stop(_process: object, _timeout: float) -> None:
+        return None
+
+    monkeypatch.setattr("vpnprobe.vpn_ping_cli.stop_process_group", stop)
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_ping_prints_decoded_configuration(
+    settings,  # type: ignore[no-untyped-def]
+    tunnel: FakeTunnel,
+    monkeypatch: pytest.MonkeyPatch,
+    parse_calls: list[tuple[str, ...]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def create(*arguments: str, **_options: object) -> ParseProcess:
+        parse_calls.append(arguments)
+        return ParseProcess(0, b"Protocol: vless\nAddress: example.com\n")
+
+    monkeypatch.setattr("vpnprobe.vpn_ping_cli.asyncio.create_subprocess_exec", create)
+    Session.responses = [Response(204)]
+    assert await run_vpn_ping(VLESS_URL, settings, 1, speedtest=False) == 0
+    assert parse_calls == [(settings.xray_knife_path, "parse", "--config", VLESS_URL)]
+    assert capsys.readouterr().out == (
+        "Protocol: vless\nAddress: example.com\n\nOK vless connectivity HTTP 204\n"
+    )
+
+
+@pytest.mark.parametrize("failure", [ParseProcess(1, b"unusable"), OSError("no xray-knife")])
+@pytest.mark.asyncio
+async def test_ping_stays_silent_when_details_are_unavailable(
+    failure: ParseProcess | OSError,
+    settings,  # type: ignore[no-untyped-def]
+    tunnel: FakeTunnel,
+    monkeypatch: pytest.MonkeyPatch,
+    parse_calls: list[tuple[str, ...]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def create(*_arguments: str, **_options: object) -> ParseProcess:
+        if isinstance(failure, OSError):
+            raise failure
+        return failure
+
+    monkeypatch.setattr("vpnprobe.vpn_ping_cli.asyncio.create_subprocess_exec", create)
+    Session.responses = [Response(204)]
+    assert await run_vpn_ping(VLESS_URL, settings, 1, speedtest=False) == 0
+    assert capsys.readouterr().out == "OK vless connectivity HTTP 204\n"
