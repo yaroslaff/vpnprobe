@@ -35,7 +35,7 @@ not test the returned VPN URLs. The equivalent library function is the async
 `fetch_subscription(url, settings)`, which returns the URLs without printing.
 
 The process runs without root privileges. Runtime checks need outbound network
-access and, depending on the protocol, executable `xray-knife`/`sing-box`, the
+access and, depending on the protocol, the `xray-knife` executable, the
 official `hysteria` client, and a loadable TDLib JSON library. Hysteria2 checks
 use the native client with a disposable mode-0600 configuration and loopback
 SOCKS5 listener. Temporary tunnel and TDLib state is removed after each check.
@@ -43,7 +43,7 @@ SOCKS5 listener. Temporary tunnel and TDLib state is removed after each check.
 `vpnprobe check` checks all external runtime dependencies without contacting the
 network. It reports the installed executable or library and its version when
 available. For a missing dependency, it prints a short Debian 13 installation
-instruction for the latest xray-knife, sing-box, Hysteria, or packaged TDLib.
+instruction for the latest xray-knife, Hysteria, or packaged TDLib.
 
 ## Exit codes
 

@@ -16,7 +16,7 @@
 - Target Debian 13 and Python 3.13 exclusively.
 - Use modern typed Python, mypy strict mode, Ruff, pytest with pytest-asyncio, and at least 90% test coverage.
 - Pin dependencies exactly and package with Hatchling.
-- Ordinary tests must not require external network access, real VPN keys, TDLib, xray-knife, or sing-box.
+- Ordinary tests must not require external network access, real VPN keys, TDLib, xray-knife, or hysteria.
 - Keep code, identifiers, CLI output, logs, diagnostics, and developer documentation in English.
 - Do not add server-side CI; checks run locally.
 

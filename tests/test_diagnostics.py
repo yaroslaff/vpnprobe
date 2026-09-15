@@ -63,7 +63,7 @@ def test_dependency_check_with_tdlib(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda configured: SimpleNamespace(library_name=configured or "libtdjson.so"),
     )
     results = check_dependencies(tdjson_library="custom.so")
-    assert seen == ["xray-knife", "sing-box", "hysteria"]
+    assert seen == ["xray-knife", "hysteria"]
     assert results[-1] == DependencyResult("TDLib", True, "custom.so", diagnostics.TDLIB_INSTALL)
 
     def unavailable(_configured: str) -> object:

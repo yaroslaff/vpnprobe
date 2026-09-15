@@ -13,9 +13,6 @@ from vpnprobe.tdlib import TdJson
 XRAY_KNIFE_INSTALL = (
     "Download the latest archive: https://github.com/lilendian0x00/xray-knife/releases/latest"
 )
-SING_BOX_INSTALL = (
-    "Install the latest release: curl -fsSL https://sing-box.app/install.sh | sudo sh"
-)
 TDLIB_INSTALL = "Install the Debian 13 package: sudo apt install libtdjson1.8.38"
 
 
@@ -51,7 +48,7 @@ def _hysteria_install() -> str:
 def _version_line(output: str) -> str:
     lines = [line.strip() for line in output.splitlines() if line.strip()]
     for line in lines:
-        if line.lower().startswith(("version", "xray-knife", "sing-box")):
+        if line.lower().startswith(("version", "xray-knife")):
             return line.replace("\t", " ")
     return lines[0] if lines else "version command produced no output"
 
@@ -100,12 +97,6 @@ def check_dependencies(
             xray_knife_path,
             ("--version",),
             XRAY_KNIFE_INSTALL,
-        ),
-        _executable(
-            "sing-box",
-            "sing-box",
-            ("version",),
-            SING_BOX_INSTALL,
         ),
         _executable(
             "hysteria",
