@@ -11,3 +11,7 @@ class ConfigurationError(ProbeError):
 
 class SubscriptionError(ProbeError):
     """A subscription cannot be downloaded or parsed safely."""
+
+
+class SetupError(ProbeError):
+    """An external runtime dependency cannot be installed."""

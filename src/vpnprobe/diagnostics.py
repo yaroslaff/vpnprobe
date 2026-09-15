@@ -125,4 +125,6 @@ def print_dependency_check(results: tuple[DependencyResult, ...]) -> int:
             print(f"  {result.install}")
     available = sum(result.available for result in results)
     print(f"Dependencies: {available}/{len(results)} available")
+    if available != len(results):
+        print("Run `vpnprobe setup` to install missing dependencies.")
     return 0 if available == len(results) else 1

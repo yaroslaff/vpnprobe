@@ -10,6 +10,7 @@ from vpnprobe import __version__
 from vpnprobe.config import Settings
 from vpnprobe.diagnostics import check_dependencies, print_dependency_check
 from vpnprobe.errors import ProbeError
+from vpnprobe.installer import run_setup
 from vpnprobe.ping import PingOptions, ping
 from vpnprobe.subscription import fetch_subscription
 
@@ -36,6 +37,17 @@ def build_parser() -> argparse.ArgumentParser:
     check_parser.add_argument("--xray-knife", default="xray-knife", metavar="PATH")
     check_parser.add_argument("--hysteria", default="hysteria", metavar="PATH")
     check_parser.add_argument("--tdjson-library", default="", metavar="PATH")
+    setup_parser = commands.add_parser(
+        "setup", help="check and offer to install missing external runtime dependencies"
+    )
+    setup_parser.add_argument(
+        "-y", "--yes", action="store_true", help="answer yes to every installation question"
+    )
+    setup_parser.add_argument(
+        "--pin",
+        action="store_true",
+        help="install the tested pinned versions instead of the latest releases",
+    )
     return parser
 
 
@@ -51,6 +63,8 @@ def main() -> None:
                 )
             )
             raise SystemExit(code)
+        if args.command == "setup":
+            raise SystemExit(run_setup(yes=args.yes, pin=args.pin))
         if args.command in {"subscription", "sub"}:
             configs = asyncio.run(fetch_subscription(args.url, Settings()))
             print("\n".join(configs))

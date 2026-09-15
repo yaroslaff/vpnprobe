@@ -29,6 +29,7 @@
 ## Security and runtime
 
 - Never require root, privileged containers, elevated Linux capabilities, or access to the vpnshare database.
+- `vpnprobe setup` is the only command that uses root when available: as root it installs executables into `/usr/local/bin` and Debian packages with apt. Without root it installs executables into `~/.local/bin` and prints the `sudo` command for anything else. It never escalates privileges itself.
 - Treat VPN URLs, proxy credentials, and subscription URLs as secrets. Do not persist them or expose them in unexpected diagnostics.
 - This is a personal, single-user project: passing VPN URLs and MTProto proxy URLs in child-process command-line arguments is acceptable because all processes and secrets are accessible only to the owner. Do not treat command-line visibility to the same OS user as a vulnerability.
 - Clean up all temporary files, TDLib state, tunnel processes, and process groups after success, failure, timeout, or interruption.

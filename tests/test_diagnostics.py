@@ -91,4 +91,6 @@ def test_dependency_output(capsys: pytest.CaptureFixture[str]) -> None:
     assert "ERR two: missing" in output
     assert "install two" in output
     assert "Dependencies: 1/2 available" in output
+    assert "vpnprobe setup" in output
     assert print_dependency_check((results[0],)) == 0
+    assert "vpnprobe setup" not in capsys.readouterr().out

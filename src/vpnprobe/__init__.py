@@ -8,7 +8,7 @@ from vpnprobe.subscription import SubscriptionResult, fetch_subscription, verify
 from vpnprobe.tdlib import ProxyTestResult, ping_telegram_proxy, verify_telegram_proxy
 from vpnprobe.verification import GeoData, VerificationResult, verify_key
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 __all__ = [
     "GeoData",

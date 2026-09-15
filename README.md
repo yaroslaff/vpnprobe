@@ -11,13 +11,32 @@ Bot API dependency. Library callers provide all settings explicitly.
 
 ## Installation
 
+On Debian 13, install a release and then its external dependencies:
+
 ```bash
-pipx install git+https://github.com/yaroslaff/vpnprobe.git
-vpnprobe check
+pipx install https://github.com/yaroslaff/vpnprobe/archive/refs/tags/0.3.3.tar.gz
+vpnprobe setup
 ```
 
-Upgrade from the same Git repository:
+For all users, run both commands with `sudo` and add `--global` to
+`pipx install`. To upgrade, repeat `pipx install --force` with a newer release
+tag.
 
+`vpnprobe setup` checks every external runtime dependency and offers to install
+each missing one: the latest `xray-knife` and official `hysteria` releases,
+verified against their published SHA-256 checksums, and the Debian TDLib
+package. As root it installs the executables into `/usr/local/bin` and TDLib
+with apt. As an ordinary user it installs the executables into `~/.local/bin`
+and prints the `sudo apt install` command for TDLib instead.
+
+- `--yes` answers every question automatically. Without a terminal, setup
+  installs nothing unless `--yes` is given.
+- `--pin` installs the tested versions (xray-knife 10.1.1, Hysteria 2.12.1)
+  instead of the latest releases, and offers to replace an installed tool of a
+  different version.
+
+Setup ends with the `vpnprobe check` report and exits `0` only when every
+dependency is available.
 
 ## Usage
 
