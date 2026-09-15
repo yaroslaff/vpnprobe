@@ -23,6 +23,8 @@
 ## Development workflow
 
 - After completing and verifying any file changes, ask the user whether to create a Git commit unless the user already explicitly requested a commit.
+- Commit directly to `master`; do not create feature branches.
+- Every commit that raises the package version must get a Git tag named exactly after the new version, without a `v` prefix (for example `0.3.2`). Push the tag together with the commit.
 
 ## Security and runtime
 
