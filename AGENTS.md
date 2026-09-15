@@ -11,11 +11,18 @@
 - Keep the `ping` contract intentionally minimal: its required result is only whether the probe succeeded, represented by a conventional integer status code. Structured latency, speed, DC, or diagnostic results are not required. The library may print or inherit useful human-readable output from probe tools such as xray-knife so an interactive user can see optional details.
 - Do not read vpnshare configuration or databases. Accept inputs and options explicitly and write only disposable runtime data to temporary directories.
 
+## Project values
+
+- Brevity: prefer short commands, short option names, and aliases (for example `-y` for `--yes`, `sub` for `subscription`) wherever they stay unambiguous.
+- Uniformity: use one format for the same kind of data (dates and times, output markers, option names) and one language for the same kind of text. Deviate only when needed, and document the deviation. When you notice an undocumented deviation, tell the user instead of silently keeping or changing it.
+- Accepted deviation, not to be reported: Git tags may be annotated or lightweight.
+
 ## Platform and quality
 
 - Target Debian 13 and Python 3.13 exclusively.
 - Use modern typed Python, mypy strict mode, Ruff, pytest with pytest-asyncio, and at least 90% test coverage.
 - Pin dependencies exactly and package with Hatchling.
+- Do not publish to PyPI. Document installation exactly as `pipx install --global git+https://github.com/yaroslaff/vpnprobe` followed by `vpnprobe setup`.
 - Ordinary tests must not require external network access, real VPN keys, TDLib, xray-knife, or hysteria.
 - Keep code, identifiers, CLI output, logs, diagnostics, and developer documentation in English.
 - Do not add server-side CI; checks run locally.

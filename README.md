@@ -11,16 +11,16 @@ Bot API dependency. Library callers provide all settings explicitly.
 
 ## Installation
 
-On Debian 13, install a release and then its external dependencies:
+On Debian 13, as root:
 
 ```bash
-pipx install https://github.com/yaroslaff/vpnprobe/archive/refs/tags/0.3.3.tar.gz
+apt install pipx git
+pipx install --global git+https://github.com/yaroslaff/vpnprobe
 vpnprobe setup
 ```
 
-For all users, run both commands with `sudo` and add `--global` to
-`pipx install`. To upgrade, repeat `pipx install --force` with a newer release
-tag.
+This installs the latest commit of `master`; vpnprobe is not published on PyPI.
+Upgrade with `pipx reinstall --global vpnprobe`.
 
 `vpnprobe setup` checks every external runtime dependency and offers to install
 each missing one: the latest `xray-knife` and official `hysteria` releases,
