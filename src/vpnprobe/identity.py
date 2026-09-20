@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import binascii
 import hashlib
 import ipaddress
 from dataclasses import dataclass
@@ -113,7 +112,7 @@ def server_endpoint(value: str) -> tuple[str, int]:
         padding = "=" * (-len(payload) % 4)
         try:
             decoded = base64.urlsafe_b64decode(payload + padding).decode("utf-8")
-        except (binascii.Error, UnicodeDecodeError) as exc:
+        except ValueError as exc:
             raise ConfigurationError("Invalid legacy SS authority") from exc
         parsed = urlsplit(f"ss://{decoded}")
     hostname = parsed.hostname

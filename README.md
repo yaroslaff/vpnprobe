@@ -49,7 +49,9 @@ vpnprobe sub 'https://example.com/subscription'
 ```
 
 `vpnprobe subscription` downloads a subscription, decodes whole-list Base64
-when necessary, and prints one SS, VLESS, or Hysteria2 URL per line. It does
+when necessary, and prints one SS, VLESS, or Hysteria2 URL per line. Blank
+lines, `#` comments, and entries it cannot use are skipped; a nested `http://`
+or `https://` entry is rejected, and so is a list with no usable entry. It does
 not test the returned VPN URLs. The equivalent library function is the async
 `fetch_subscription(url, settings)`, which returns the URLs without printing.
 

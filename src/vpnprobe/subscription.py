@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import binascii
 import ipaddress
 import random
 import socket
@@ -123,17 +122,29 @@ async def _download_once(url: str, settings: ProbeConfig) -> tuple[int, bytes, s
 
 
 def _parse_lines(text: str) -> list[str]:
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if not lines:
+    """Collect supported entries, skipping comments, blanks, and unusable lines."""
+    if not text.strip():
         raise SubscriptionError("Subscription is empty")
-    if any(not line.lower().startswith(("ss://", "vless://", "hysteria2://")) for line in lines):
-        raise SubscriptionError("Subscription contains an unsupported or recursive entry")
-    try:
-        for line in lines:
+    entries: list[str] = []
+    skipped = 0
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.lower().startswith(("http://", "https://")):
+            raise SubscriptionError("Subscription contains a recursive entry")
+        if not line.lower().startswith(("ss://", "vless://", "hysteria2://")):
+            skipped += 1
+            continue
+        try:
             identify(line)
-    except ConfigurationError as exc:
-        raise SubscriptionError(f"Subscription contains an invalid entry: {exc}") from exc
-    return lines
+        except ConfigurationError:
+            skipped += 1
+            continue
+        entries.append(line)
+    if not entries:
+        raise SubscriptionError(f"Subscription has no supported entries, skipped {skipped}")
+    return entries
 
 
 def parse_subscription(payload: bytes) -> list[str]:
@@ -154,7 +165,7 @@ def parse_subscription(payload: bytes) -> list[str]:
                 validate=True,
             ).decode("utf-8-sig")
             return _parse_lines(decoded)
-        except (binascii.Error, UnicodeDecodeError, SubscriptionError) as exc:
+        except (ValueError, SubscriptionError) as exc:
             raise plain_error from exc
 
 

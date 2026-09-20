@@ -36,6 +36,8 @@ def test_direct_server_endpoint() -> None:
     assert server_endpoint(f"ss://{encoded}#name") == ("legacy.example", 9443)
     with pytest.raises(ConfigurationError, match="direct"):
         server_endpoint("https://example.com/sub")
+    with pytest.raises(ConfigurationError, match="legacy SS authority"):
+        server_endpoint("ss://\u041f\u0430\u0440\u043e\u043b\u044c")
 
 
 def test_mtproto_proxy_identity() -> None:

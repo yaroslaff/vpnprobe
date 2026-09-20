@@ -34,12 +34,44 @@ def test_parse_plain_and_base64_subscription() -> None:
     assert parse_subscription(base64.urlsafe_b64encode(plain).rstrip(b"=")) == lines
     with pytest.raises(SubscriptionError, match="empty"):
         parse_subscription(b"")
-    with pytest.raises(SubscriptionError, match="unsupported"):
+    with pytest.raises(SubscriptionError, match="recursive"):
         parse_subscription(b"https://recursive.example/sub")
-    with pytest.raises(SubscriptionError, match="invalid entry"):
+    with pytest.raises(SubscriptionError, match="no supported entries"):
         parse_subscription(b"vless://id@example.com:not-a-port")
     with pytest.raises(SubscriptionError, match="UTF-8"):
         parse_subscription(b"\xff\xfe")
+
+
+def test_parse_subscription_keeps_usable_entries() -> None:
+    body = (
+        "#support-url: https://t.me/example\n"
+        "# \u041e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u043e: 2026-09-21 00:58:21\n"
+        "\n"
+        "vless://id@example.com:443?security=tls\n"
+        "vless://id@example.com:not-a-port\n"
+        "tuic://id@example.com:443\n"
+        "ss://AbCdEf123\n"
+    ).encode()
+    assert parse_subscription(body) == [
+        "vless://id@example.com:443?security=tls",
+        "ss://AbCdEf123",
+    ]
+
+
+def test_parse_subscription_rejects_non_ascii_without_entries() -> None:
+    """A non-ASCII body must fail as a subscription error, never as a raw ValueError."""
+    for body in (
+        "<html><body>\u041e\u0448\u0438\u0431\u043a\u0430</body></html>",
+        "no keys here \u2014 subscription expired",
+    ):
+        with pytest.raises(SubscriptionError):
+            parse_subscription(body.encode())
+
+
+def test_parse_subscription_rejects_recursion_inside_a_list() -> None:
+    body = b"vless://id@example.com:443\nhttps://recursive.example/sub\n"
+    with pytest.raises(SubscriptionError, match="recursive"):
+        parse_subscription(body)
 
 
 @pytest.mark.asyncio
