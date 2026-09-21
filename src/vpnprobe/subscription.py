@@ -17,7 +17,7 @@ from aiohttp.abc import AbstractResolver, ResolveResult
 from vpnprobe.config import ProbeConfig
 from vpnprobe.errors import ConfigurationError, SubscriptionError
 from vpnprobe.events import EventSink
-from vpnprobe.identity import Identity, identify
+from vpnprobe.identity import Identity, identify, server_endpoint
 from vpnprobe.models import Outcome
 from vpnprobe.verification import GeoData, VerificationResult, verify_key
 
@@ -138,6 +138,9 @@ def _parse_lines(text: str) -> list[str]:
             continue
         try:
             identify(line)
+            # Reject syntactically unusable entries here, so a subscription
+            # cannot spend a verification attempt on a link no tunnel can run.
+            server_endpoint(line)
         except ConfigurationError:
             skipped += 1
             continue

@@ -21,11 +21,15 @@ from vpnprobe.subscription import (
 )
 from vpnprobe.verification import GeoData, VerificationResult
 
+LEGACY_SS = "ss://" + (
+    base64.urlsafe_b64encode(b"aes-256-gcm:password@legacy.example:9443").decode().rstrip("=")
+)
+
 
 def test_parse_plain_and_base64_subscription() -> None:
     lines = [
         "vless://id@example.com:443?security=tls",
-        "ss://AbCdEf123",
+        LEGACY_SS,
         "hysteria2://password@example.net:9443?sni=example.net",
     ]
     plain = "\n".join(lines).encode()
@@ -49,12 +53,14 @@ def test_parse_subscription_keeps_usable_entries() -> None:
         "\n"
         "vless://id@example.com:443?security=tls\n"
         "vless://id@example.com:not-a-port\n"
+        "vless://501a9f81-d8e3-410b-afdc-e9bb55fae944#advertisement\n"
+        "hysteria2://password@example.net:20000-50000?sni=example.net\n"
         "tuic://id@example.com:443\n"
-        "ss://AbCdEf123\n"
+        f"{LEGACY_SS}\n"
     ).encode()
     assert parse_subscription(body) == [
         "vless://id@example.com:443?security=tls",
-        "ss://AbCdEf123",
+        LEGACY_SS,
     ]
 
 

@@ -11,6 +11,7 @@ import pytest
 
 from vpnprobe.config import Settings
 from vpnprobe.xray import (
+    ERROR_OUTPUT_CHARS,
     Tunnel,
     TunnelError,
     _hysteria_config,
@@ -18,6 +19,7 @@ from vpnprobe.xray import (
     _random_free_port,
     _start_hysteria_tunnel,
     _wait_for_socks,
+    condense_output,
     start_tunnel,
 )
 
@@ -227,6 +229,18 @@ async def test_tunnel_error_output() -> None:
     assert await tunnel.error_output() == ""
     tunnel.username = ""
     assert tunnel.proxy_url == "socks5://127.0.0.1:12345"
+
+
+def test_condense_output_keeps_both_ends() -> None:
+    assert condense_output("short") == "short"
+    # A rejected command line prints the cause first, then a long usage block.
+    usage = "Error: missing port in address\nUsage:\n" + "  --flag string\n" * 400
+    usage = usage.strip()
+    condensed = condense_output(usage)
+    assert len(condensed) == ERROR_OUTPUT_CHARS
+    assert condensed.startswith("Error: missing port in address")
+    # A client that fails after starting prints the cause last.
+    assert condensed.endswith("--flag string")
 
 
 @pytest.mark.asyncio

@@ -39,6 +39,24 @@ def _random_free_port() -> int:
     raise TunnelError("Cannot find a free proxy port after 20 attempts")
 
 
+ERROR_OUTPUT_CHARS = 1000
+
+
+def condense_output(text: str, limit: int = ERROR_OUTPUT_CHARS) -> str:
+    """Keep both ends of a long tool output.
+
+    A CLI that rejects its arguments prints the cause first and then a long
+    usage block, while a client that fails later prints its cause last. Keeping
+    only one end hides the cause in one of the two cases.
+    """
+    if len(text) <= limit:
+        return text
+    marker = " [...] "
+    head = (limit - len(marker)) * 3 // 5
+    tail = limit - len(marker) - head
+    return text[:head] + marker + text[-tail:]
+
+
 @dataclass(slots=True)
 class Tunnel:
     process: asyncio.subprocess.Process
@@ -61,7 +79,7 @@ class Tunnel:
         if self.process.stderr is None:
             return ""
         data = await self.process.stderr.read()
-        return data.decode(errors="replace").strip()[-1000:]
+        return condense_output(data.decode(errors="replace").strip())
 
     async def entry_ip(self, config_url: str) -> str | None:
         """Observe the remote server IP used by the tunnel process tree."""
