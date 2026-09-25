@@ -19,7 +19,7 @@ from vpnprobe.subscription import (
     parse_subscription,
     verify_subscription,
 )
-from vpnprobe.verification import GeoData, VerificationResult
+from vpnprobe.verification import GeoData, SpeedResult, VerificationResult
 
 LEGACY_SS = "ss://" + (
     base64.urlsafe_b64encode(b"aes-256-gcm:password@legacy.example:9443").decode().rstrip("=")
@@ -209,32 +209,54 @@ async def test_verify_subscription_selects_fastest_and_bounds_attempts(
     async def fetch(_url: str, _settings: Settings) -> list[str]:
         return configs.copy()
 
-    speeds = iter((10.0, 30.0, 20.0))
+    speeds = iter((10.0, None, 20.0))
     latencies = iter((50.0, 40.0, 30.0))
 
     async def verify(
         url: str, _settings: Settings, _logger: EventSink, *, identity: object
     ) -> VerificationResult:
-        speed = next(speeds)
         return VerificationResult(
             Outcome.SUCCESS,
             "ok",
             __import__("vpnprobe.identity", fromlist=["identify"]).identify(url),
-            speed,
-            GeoData("1.2.3.4", "Country", "City"),
-            next(latencies),
+            geo=GeoData("1.2.3.4", "Country", "City"),
+            latency_ms=next(latencies),
         )
+
+    async def measure(
+        _url: str, _settings: Settings, _logger: EventSink, *, identity: object
+    ) -> SpeedResult:
+        speed = next(speeds)
+        return SpeedResult(speed, "ok" if speed is not None else "failed")
+
+    finished: list[float | None] = []
+
+    async def on_finished(_attempt_id: int | None, result: VerificationResult) -> None:
+        finished.append(result.speed_mbps)
 
     monkeypatch.setattr("vpnprobe.subscription.fetch_subscription", fetch)
     monkeypatch.setattr("vpnprobe.subscription.verify_key", verify)
+    monkeypatch.setattr("vpnprobe.subscription.measure_speed", measure)
     monkeypatch.setattr("vpnprobe.subscription.random.SystemRandom.shuffle", lambda _s, _x: None)
     logger = NullEventSink()
-    result = await verify_subscription("https://example.com/sub", settings, logger)
+    result = await verify_subscription(
+        "https://example.com/sub",
+        settings,
+        logger,
+        on_attempt_finished=on_finished,
+        speed_test=True,
+    )
     assert result.outcome is Outcome.SUCCESS
     assert result.attempts == 3
     assert result.successes == 3
-    assert result.speed_mbps == 30.0
+    assert finished == [10.0, None, 20.0]
+    assert result.speed_mbps == 20.0
     assert result.latency_ms == 30.0
+
+    latencies = iter((50.0, 40.0, 30.0))
+    result = await verify_subscription("https://example.com/sub", settings, logger)
+    assert result.outcome is Outcome.SUCCESS
+    assert result.speed_mbps is None
 
 
 @pytest.mark.asyncio

@@ -14,8 +14,10 @@ from vpnprobe.verification import (
     GeoData,
     NetworkProbe,
     ServiceUnavailable,
+    SpeedResult,
     VerificationFailure,
     _service_status,
+    measure_speed,
     verify_key,
 )
 
@@ -174,16 +176,17 @@ async def test_network_probe_run(settings: Settings, monkeypatch: pytest.MonkeyP
         FakeResponse(204),
         FakeResponse(204),
         FakeResponse(204),
-        FakeResponse(200, chunks=[b"data"]),
     ]
     monkeypatch.setattr("vpnprobe.verification.aiohttp.ClientSession", RunSession)
     probe = object.__new__(NetworkProbe)
     probe.settings = settings
     probe.connector = object()  # type: ignore[assignment]
-    geo, latency, speed = await probe.run()
+    geo, latency = await probe.run()
     assert geo.ip == "1.2.3.4"
     assert latency >= 0
-    assert speed > 0
+
+    RunSession.items = [FakeResponse(204), FakeResponse(200, chunks=[b"data"])]
+    assert await probe.run_speed() > 0
 
 
 @pytest.mark.asyncio
@@ -215,14 +218,14 @@ async def test_verify_key_success(settings: Settings, monkeypatch: pytest.Monkey
     async def start(_url: str, _settings: Settings) -> Any:
         return tunnel
 
-    async def run(_self: NetworkProbe) -> tuple[GeoData, float, float]:
-        return GeoData("1.2.3.4", "Country", "City"), 45.6, 12.3
+    async def run(_self: NetworkProbe) -> tuple[GeoData, float]:
+        return GeoData("1.2.3.4", "Country", "City"), 45.6
 
     monkeypatch.setattr("vpnprobe.verification.start_tunnel", start)
     monkeypatch.setattr(NetworkProbe, "run", run)
     result = await verify_key("vless://id@example.com:443", settings, NullEventSink())
     assert result.outcome is Outcome.SUCCESS
-    assert result.speed_mbps == 12.3
+    assert result.speed_mbps is None
     assert result.latency_ms == 45.6
     assert result.geo == GeoData("1.2.3.4", "Country", "City")
     assert result.entry_ip == "9.8.7.6"
@@ -247,9 +250,9 @@ async def test_verify_key_observes_entry_while_probe_runs(
     async def start(_url: str, _settings: Settings) -> DelayedEntryTunnel:
         return tunnel
 
-    async def run(_self: NetworkProbe) -> tuple[GeoData, float, float]:
+    async def run(_self: NetworkProbe) -> tuple[GeoData, float]:
         await asyncio.sleep(0.01)
-        return GeoData("1.2.3.4", "Country", "City"), 45.6, 12.3
+        return GeoData("1.2.3.4", "Country", "City"), 45.6
 
     monkeypatch.setattr("vpnprobe.verification.start_tunnel", start)
     monkeypatch.setattr(NetworkProbe, "run", run)
@@ -269,7 +272,7 @@ async def test_verify_key_inconclusive_failed_and_timeout(
         tunnels.append(tunnel)
         return tunnel
 
-    async def unavailable(_self: NetworkProbe) -> tuple[GeoData, float, float]:
+    async def unavailable(_self: NetworkProbe) -> tuple[GeoData, float]:
         raise ServiceUnavailable("HTTP 503")
 
     monkeypatch.setattr("vpnprobe.verification.start_tunnel", start)
@@ -278,14 +281,14 @@ async def test_verify_key_inconclusive_failed_and_timeout(
     assert result.outcome is Outcome.INCONCLUSIVE
     assert result.entry_ip == "9.8.7.6"
 
-    async def failed(_self: NetworkProbe) -> tuple[GeoData, float, float]:
+    async def failed(_self: NetworkProbe) -> tuple[GeoData, float]:
         raise VerificationFailure("no connectivity")
 
     monkeypatch.setattr(NetworkProbe, "run", failed)
     result = await verify_key("vless://id@example.com:443", settings, NullEventSink())
     assert result.outcome is Outcome.FAILED
 
-    async def proxy_timeout(_self: NetworkProbe) -> tuple[GeoData, float, float]:
+    async def proxy_timeout(_self: NetworkProbe) -> tuple[GeoData, float]:
         raise ProxyTimeoutError("Proxy connection timed out: 60")
 
     monkeypatch.setattr(NetworkProbe, "run", proxy_timeout)
@@ -305,4 +308,58 @@ async def test_verify_key_inconclusive_failed_and_timeout(
     )
     assert result.outcome is Outcome.FAILED
     assert "exceeded" in result.detail
+    assert all(tunnel.stopped for tunnel in tunnels)
+
+
+@pytest.mark.asyncio
+async def test_measure_speed_success_failure_and_timeout(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tunnels: list[FakeTunnel] = []
+
+    async def start(_url: str, _settings: Settings) -> Any:
+        tunnel = FakeTunnel()
+        tunnels.append(tunnel)
+        return tunnel
+
+    async def fast(_self: NetworkProbe) -> float:
+        return 12.3
+
+    monkeypatch.setattr("vpnprobe.verification.start_tunnel", start)
+    monkeypatch.setattr(NetworkProbe, "run_speed", fast)
+    url = "vless://id@example.com:443"
+    assert await measure_speed(url, settings, NullEventSink()) == SpeedResult(
+        12.3, "speed test succeeded"
+    )
+
+    async def unavailable(_self: NetworkProbe) -> float:
+        raise ServiceUnavailable("Speed service returned HTTP 503")
+
+    monkeypatch.setattr(NetworkProbe, "run_speed", unavailable)
+    result = await measure_speed(url, settings, NullEventSink())
+    assert result == SpeedResult(None, "Speed service returned HTTP 503")
+
+    class DeadTunnel(FakeTunnel):
+        def __init__(self) -> None:
+            super().__init__()
+            self.process.returncode = 1
+
+    async def dead_start(_url: str, _settings: Settings) -> Any:
+        tunnel = DeadTunnel()
+        tunnels.append(tunnel)
+        return tunnel
+
+    monkeypatch.setattr("vpnprobe.verification.start_tunnel", dead_start)
+    result = await measure_speed(url, settings, NullEventSink())
+    assert result.speed_mbps is None
+    assert "exited early: bad config" in result.detail
+
+    async def slow_start(_url: str, _settings: Settings) -> Any:
+        await asyncio.sleep(0.05)
+        return FakeTunnel()
+
+    monkeypatch.setattr("vpnprobe.verification.start_tunnel", slow_start)
+    result = await measure_speed(url, replace(settings, key_check_timeout=0.001), NullEventSink())
+    assert result == SpeedResult(None, "speed test exceeded 0.001s")
+    assert len(tunnels) == 3
     assert all(tunnel.stopped for tunnel in tunnels)

@@ -62,16 +62,21 @@ class NetworkProbe:
         self.settings = settings
         self.connector = ProxyConnector.from_url(proxy_url, rdns=True, force_close=True)
 
-    async def run(self) -> tuple[GeoData, float, float]:
+    def _session(self) -> aiohttp.ClientSession:
         timeout = aiohttp.ClientTimeout(total=self.settings.key_check_timeout)
-        async with aiohttp.ClientSession(
-            connector=self.connector, timeout=timeout, trust_env=False
-        ) as session:
+        return aiohttp.ClientSession(connector=self.connector, timeout=timeout, trust_env=False)
+
+    async def run(self) -> tuple[GeoData, float]:
+        async with self._session() as session:
             await self._wait_for_connectivity(session)
             geo = await self._fetch_geo(session)
             latency = await self._measure_latency(session)
-            speed = await self._measure_speed(session)
-            return geo, latency, speed
+            return geo, latency
+
+    async def run_speed(self) -> float:
+        async with self._session() as session:
+            await self._wait_for_connectivity(session)
+            return await self._measure_speed(session)
 
     async def _wait_for_connectivity(self, session: aiohttp.ClientSession) -> None:
         deadline = asyncio.get_running_loop().time() + self.settings.connectivity_check_timeout
@@ -172,6 +177,28 @@ class NetworkProbe:
         return round(statistics.median(samples), 1)
 
 
+@dataclass(frozen=True, slots=True)
+class SpeedResult:
+    speed_mbps: float | None
+    detail: str
+
+
+async def _stop_tunnel(tunnel: Tunnel) -> None:
+    cleanup = asyncio.create_task(tunnel.stop())
+    try:
+        await asyncio.shield(cleanup)
+    except asyncio.CancelledError:
+        await cleanup
+        raise
+
+
+async def _settle_tunnel(tunnel: Tunnel, settings: ProbeConfig) -> None:
+    await asyncio.sleep(settings.tunnel_settle_delay)
+    if tunnel.process.returncode is not None:
+        detail = await tunnel.error_output()
+        raise TunnelError(f"xray-knife exited early: {detail or tunnel.process.returncode}")
+
+
 async def verify_key(
     config_url: str,
     settings: ProbeConfig,
@@ -201,30 +228,26 @@ async def verify_key(
     try:
         async with asyncio.timeout(settings.key_check_timeout):
             tunnel = await start_tunnel(config_url, settings)
-            await asyncio.sleep(settings.tunnel_settle_delay)
-            if tunnel.process.returncode is not None:
-                detail = await tunnel.error_output()
-                raise TunnelError(f"xray-knife exited early: {detail or tunnel.process.returncode}")
+            await _settle_tunnel(tunnel, settings)
             logger.event("TUNNEL_READY", f"key_id={key_identity.short_id} port={tunnel.port}")
             await observe_entry_ip()
             if entry_ip is None:
                 entry_observer = asyncio.create_task(observe_entry_until_found())
-            geo, latency, speed = await NetworkProbe(tunnel.proxy_url, settings).run()
+            geo, latency = await NetworkProbe(tunnel.proxy_url, settings).run()
             await observe_entry_ip()
         logger.event(
             "VERIFICATION_OK",
             f"key_id={key_identity.short_id} entry_ip={entry_ip or '-'} "
             f"exit_ip={geo.ip} country={geo.country} "
-            f"city={geo.city} latency_ms={latency:.1f} speed_mbps={speed:.1f}",
+            f"city={geo.city} latency_ms={latency:.1f}",
         )
         return VerificationResult(
             Outcome.SUCCESS,
             "verification succeeded",
             key_identity,
-            speed,
-            geo,
-            latency,
-            entry_ip,
+            geo=geo,
+            latency_ms=latency,
+            entry_ip=entry_ip,
         )
     except ServiceUnavailable as exc:
         await observe_entry_ip()
@@ -253,9 +276,47 @@ async def verify_key(
             with contextlib.suppress(asyncio.CancelledError):
                 await entry_observer
         if tunnel is not None:
-            cleanup = asyncio.create_task(tunnel.stop())
-            try:
-                await asyncio.shield(cleanup)
-            except asyncio.CancelledError:
-                await cleanup
-                raise
+            await _stop_tunnel(tunnel)
+
+
+async def measure_speed(
+    config_url: str,
+    settings: ProbeConfig,
+    logger: EventSink,
+    *,
+    identity: Identity | None = None,
+) -> SpeedResult:
+    """Measure download speed through a fresh tunnel and always tear it down.
+
+    Speed is optional information about an already verified key, so every failure is
+    reported as an unknown speed instead of an exception or a verification outcome.
+    """
+    key_identity = identity or identify(config_url)
+    logger.event("SPEED_TEST_START", f"key_id={key_identity.short_id}")
+    tunnel: Tunnel | None = None
+    try:
+        async with asyncio.timeout(settings.key_check_timeout):
+            tunnel = await start_tunnel(config_url, settings)
+            await _settle_tunnel(tunnel, settings)
+            speed = await NetworkProbe(tunnel.proxy_url, settings).run_speed()
+    except TimeoutError:
+        detail = f"speed test exceeded {settings.key_check_timeout:g}s"
+    except (
+        ServiceUnavailable,
+        VerificationFailure,
+        TunnelError,
+        aiohttp.ClientError,
+        ProxyConnectionError,
+        ProxyError,
+        ProxyTimeoutError,
+        OSError,
+    ) as exc:
+        detail = str(exc)
+    else:
+        logger.event("SPEED_TEST_OK", f"key_id={key_identity.short_id} speed_mbps={speed:.1f}")
+        return SpeedResult(speed, "speed test succeeded")
+    finally:
+        if tunnel is not None:
+            await _stop_tunnel(tunnel)
+    logger.event("ERROR_SPEED_TEST", f"key_id={key_identity.short_id} detail={detail}")
+    return SpeedResult(None, detail)

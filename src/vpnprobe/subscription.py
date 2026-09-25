@@ -8,7 +8,7 @@ import ipaddress
 import random
 import socket
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from urllib.parse import urljoin, urlsplit
 
 import aiohttp
@@ -19,7 +19,7 @@ from vpnprobe.errors import ConfigurationError, SubscriptionError
 from vpnprobe.events import EventSink
 from vpnprobe.identity import Identity, identify, server_endpoint
 from vpnprobe.models import Outcome
-from vpnprobe.verification import GeoData, VerificationResult, verify_key
+from vpnprobe.verification import GeoData, VerificationResult, measure_speed, verify_key
 
 
 class PinnedResolver(AbstractResolver):
@@ -223,6 +223,7 @@ async def verify_subscription(
     *,
     on_attempt_started: AttemptStarted = _noop_started,
     on_attempt_finished: AttemptFinished = _noop_finished,
+    speed_test: bool = False,
 ) -> SubscriptionResult:
     subscription_identity = identify(url)
     attempts = 0
@@ -241,6 +242,9 @@ async def verify_subscription(
                 attempt_id = await on_attempt_started(key_identity)
                 attempts += 1
                 result = await verify_key(config, settings, logger, identity=key_identity)
+                if speed_test and result.outcome is Outcome.SUCCESS:
+                    speed = await measure_speed(config, settings, logger, identity=key_identity)
+                    result = replace(result, speed_mbps=speed.speed_mbps)
                 await on_attempt_finished(attempt_id, result)
                 if result.outcome is Outcome.SUCCESS:
                     successful.append(result)
@@ -254,7 +258,7 @@ async def verify_subscription(
         detail = "subscription verification completed"
 
     if successful:
-        best = max(successful, key=lambda item: item.speed_mbps or 0.0)
+        measured_speeds = [item.speed_mbps for item in successful if item.speed_mbps is not None]
         measured_latencies = [item.latency_ms for item in successful if item.latency_ms is not None]
         return SubscriptionResult(
             Outcome.SUCCESS,
@@ -262,7 +266,7 @@ async def verify_subscription(
             subscription_identity,
             attempts,
             len(successful),
-            best.speed_mbps,
+            max(measured_speeds) if measured_speeds else None,
             None,
             min(measured_latencies) if measured_latencies else None,
         )

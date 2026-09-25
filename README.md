@@ -56,6 +56,14 @@ entry is rejected, and so is a list with no usable entry. It does
 not test the returned VPN URLs. The equivalent library function is the async
 `fetch_subscription(url, settings)`, which returns the URLs without printing.
 
+`verify_key(url, settings, logger)` checks one direct VPN URL through a
+disposable tunnel: connectivity, GeoIP, and latency. It does not measure speed.
+`measure_speed(url, settings, logger)` is a separate, optional step that opens
+its own tunnel and downloads `speed_test_url`; any failure yields an unknown
+speed (`None`) instead of an exception. `verify_subscription(...,
+speed_test=True)` measures every successfully verified entry and reports the
+highest speed.
+
 The process runs without root privileges. Runtime checks need outbound network
 access and, depending on the protocol, the `xray-knife` executable, the
 official `hysteria` client, and a loadable TDLib JSON library. Hysteria2 checks
